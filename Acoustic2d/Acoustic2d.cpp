@@ -1,0 +1,257 @@
+#include "Acoustic2d.h"
+
+
+void Acoustic2d::CheckVal(double val, double left_lim, double right_lim)
+{
+
+    if(val < left_lim || val > right_lim)
+        throw "Value val = " + to_string(val) + " but cannot be < " +
+              to_string(left_lim) + " or > " + to_string(right_lim);
+
+}
+
+
+void Acoustic2d::CheckCoord(Coord<double>& r)
+{
+
+    CheckVal(r.x, 0.0, length.x);
+    CheckVal(r.y, 0.0, length.y);
+
+}
+
+
+void Acoustic2d::Check()
+{
+
+    if(next_sol.size() != grid_size.x)
+        throw "grid_size.x = " + to_string(grid_size.x) + " is not equal to next_sol.size() = " + to_string(next_sol.size());
+
+    if(curr_sol.size() > 0)
+    {
+
+        if(curr_sol[0].size() != grid_size.y)
+            throw "grid_size.y = " + to_string(grid_size.y) + " is not equal to curr_sol.size() = " + to_string(curr_sol.size());
+
+    }
+
+    if(length.x     <= 0) throw "length.x = "     + to_string(length.x)     + " cannot be < 0";
+    if(length.y     <= 0) throw "length.y = "     + to_string(length.y)     + " cannot be < 0";
+    if(time_lim     <= 0) throw "time_lim = "     + to_string(time_lim)     + " cannot be < 0";
+    if(t_step       <= 0) throw "t_step = "       + to_string(t_step)       + " cannot be < 0";
+    if(step.x       <= 0) throw "step.x = " + to_string(step.x) + " cannot be < 0";
+    if(step.y       <= 0) throw "step.y = " + to_string(step.y) + " cannot be < 0";
+    if(courant_num  <= 0) throw "courant_num = "  + to_string(courant_num)  + " cannot be < 0";
+
+}
+
+void Acoustic2d::Dump()
+{
+
+    cout << "length.x = "    << length.x     << "\n"
+         << "length.y = "    << length.y     << "\n"
+         << "time_lim = "    << time_lim     << "\n"
+         << "t_step = "      << t_step       << "\n"
+         << "x_step = "      << step.x << "\n"
+         << "y_step = "      << step.y << "\n"
+         << "courant_num = " << courant_num  << "\n"
+         << "grid_size.x = " << grid_size.x  << "\n"
+         << "grid_size.y = " << grid_size.y  << "\n";
+
+    cout << "\n";
+
+    cout << "p:\n";
+
+    for(unsigned int i = 0; i < grid_size.x; ++i)
+    {
+
+        for(unsigned int j = 0; j < grid_size.y; ++j)
+            printf("%.3f ", curr_sol[i][j].p);
+            //printf("(%.1f,%.1f,%.1f) ", curr_sol[i][j].u, curr_sol[i][j].v, curr_sol[i][j].p);
+
+        cout << "\n";
+
+    }
+
+}
+
+
+Acoustic2d::Acoustic2d(double len, int nodes,
+                       double time_lim, double time_step,
+                       double density, double elastic_ratio):
+    length(len, len), step(0, 0),  grid_size(nodes, nodes),
+    time_lim(time_lim), t_step(time_step),
+    next_sol_arr(), curr_sol_arr(),
+    next_sol(next_sol_arr), curr_sol(curr_sol_arr),
+    den(density), el_rat(elastic_ratio)
+{
+
+    if(nodes < 2)
+    {
+
+        throw "Number of nodes = " + to_string(nodes) +  " cannot be < 2\n";
+
+    }
+    else
+    {
+
+        step = Coord <double> (len / (nodes - 1), len / (nodes - 1));
+
+    }
+
+    AcVars zero(0.0, 0.0, 0.0);
+    vector <AcVars> line;
+    line.assign(grid_size.y, zero);
+    curr_sol_arr.assign(grid_size.x, line);
+    next_sol_arr = curr_sol_arr;
+
+    Check();
+    //Dump();
+
+}
+
+Acoustic2d::Acoustic2d():
+    length(0.0, 0.0), time_lim(0), t_step(0), step(0.0, 0.0), courant_num(0), grid_size(0, 0),
+    next_sol_arr(), curr_sol_arr(),
+    next_sol(next_sol_arr), curr_sol(curr_sol_arr),
+    den(0.0), el_rat(0.0)
+{
+
+    Dump();
+
+}
+
+
+void Acoustic2d::RecordCurrSol(string& prefix, double t)
+{
+
+    std::ofstream output;
+    //string fname = "data/" + prefix + "_" + to_string(t) + ".txt";
+
+    string fname = "data/test.csv." + to_string(int(t / t_step));
+    output.open(fname, std::ifstream::out);
+
+    if(!output.is_open() || !output.good())
+        throw "Bad output filename " + fname + " in RecordCurrSol (check if the directory exists).\n";
+    output << "x coord, y coord, z coord, scalar\n";
+
+    for(unsigned int i = 0; i < grid_size.x - 1; ++i)
+    {
+
+        for(unsigned int j = 0; j < grid_size.y - 1; ++j)
+
+        output << (i + 0.5) * step.x << ", " << (j + 0.5) * step.y << ", 0.0, " << curr_sol[i][j].p << "\n";
+
+    }
+
+    output.close();
+
+}
+
+void Acoustic2d::user_action(double t)
+{
+
+    string pref = "";
+    RecordCurrSol(pref, t);
+
+}
+
+#define X0 length.x / 2 +  step.x
+
+AcVars Acoustic2d::InitCond(Coord<double>& r)
+{
+
+    CheckCoord(r);
+    AcVars val(0.0, 0.0, 0.0); // cos(pow(r.x * r.x + r.y * r.y, 0.5))
+
+    double rad = pow((r.x - X0) * (r.x - X0) + (r.y - X0) * (r.y - X0), 0.5);
+
+    if(rad < step.x * 10)
+        val.p = 1.0 * cos(rad * M_PI / 2 / (step.x * 10));
+
+    return val;
+
+}
+
+void Acoustic2d::Solver()
+{
+
+    Check();
+
+    int t_steps_num = (int) round(time_lim / t_step);
+
+
+    for(unsigned int i = 0; i < grid_size.x; ++i)
+    {
+
+        for(unsigned int j = 0; j < grid_size.y; ++j)
+        {
+
+            Coord <double> pos(step.x * i, step.y * j);
+            curr_sol[i][j] = InitCond(pos);
+
+        }
+
+    }
+
+    user_action(0.0);
+
+    for(int j = 1; j <= t_steps_num; ++j)
+    {
+
+        Iteration(j);
+        user_action(j * t_step);
+
+    }
+
+}
+
+void Acoustic2d::Iteration(int t_step_num)
+{
+
+    for(unsigned int i = 0; i < grid_size.x - 1; ++i)
+    {
+
+        for(unsigned int j = 0; j < grid_size.y - 1; ++j)
+        {
+
+            if(i != grid_size.x - 1 && j != grid_size.y - 1)
+            {
+
+                next_sol[i][j].p = curr_sol[i][j].p - el_rat * t_step * ((curr_sol[i + 1][j].u - curr_sol[i][j].u) / step.x +
+                                                                        (curr_sol[i][j + 1].v - curr_sol[i][j].v) / step.y);
+
+            }
+
+        }
+
+    }
+
+    for(unsigned int i = 0; i < grid_size.x; ++i)
+    {
+
+        for(unsigned int j = 0; j < grid_size.y; ++j)
+        {
+
+            if(i == 0 || j == 0 || i == grid_size.x - 1 || j == grid_size.y - 1)
+            {
+
+                next_sol[i][j].u = 0.0;
+                next_sol[i][j].v = 0.0;
+
+            }
+            else
+            {
+
+                next_sol[i][j].u = curr_sol[i][j].u - t_step / den / step.x * (next_sol[i][j].p - next_sol[i - 1][j].p);
+                next_sol[i][j].v = curr_sol[i][j].v - t_step / den / step.y * (next_sol[i][j].p - next_sol[i][j - 1].p);
+
+            }
+
+
+        }
+
+    }
+
+    swap(curr_sol, next_sol);
+
+}
