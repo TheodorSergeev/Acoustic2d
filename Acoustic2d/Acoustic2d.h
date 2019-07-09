@@ -12,7 +12,7 @@ using std::string;
 using std::cout;
 using std::to_string;
 
-enum BoundCondType { NONE, DIRICHLET, NEUMANN, MUR };
+enum BoundCondType { NONE, DIRICHLET, NEUMANN, MUR, PML };
 
 template <class TYPE>
 struct Coord
@@ -30,13 +30,15 @@ struct AcVars  //acoustic variables
 {
 
 
-    AcVars(double p_, double u_, double v_):
-        p(p_), u(u_), v(v_)
+    AcVars(double p_, double u_, double v_, double Q_ = 0.0, double R_ = 0.0):
+        p(p_), u(u_), v(v_), Q(Q_), R(R_)
     {}
 
     double p, // sound pressure
            u, // particle velocity x
-           v; // particle velocity y
+           v, // particle velocity y
+           Q,
+           R;
 
 };
 
@@ -47,6 +49,7 @@ protected:
 
     double den;     // density
     double el_rat;  // volume elastic ratio
+    double wave_sp; // wave speed
 
     vector < vector<AcVars> > next_sol_arr; // t+1
     vector < vector<AcVars> > curr_sol_arr; // t
@@ -68,6 +71,14 @@ protected:
     void Check();                 // check whether variables are defined correctly
     void Dump();                  // print techical info
 
+    void Iteration(int t_step_num);
+    void PmlIteration(int t_step_num); //tmp
+
+    void ReflBoundCond();
+    void MurBoundCond();
+    void PmlBoundCond();
+    double R(int node_depth, int pml_depth, double R_max, double power);
+
 public:
 
     virtual AcVars InitCond (Coord<double>& r);
@@ -76,14 +87,13 @@ public:
 
     Acoustic2d(double len, int nodes,
                double time_lim, double time_step,
-               double density, double elastic_ratio);
+               double density, double elastic_ratio, double wave_speed);
 
     void RecordCurrSol(string& prefix, double t);
 
-    virtual void user_action(double t);
-
     void Solver();
-    void Iteration(int t_step_num);
+
+    virtual void user_action(double t);
 
 };
 
