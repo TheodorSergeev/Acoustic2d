@@ -13,7 +13,7 @@ int main()
         const double time_lim = 1.0, time_step = 0.01;
         const double dens = 1.0, el_rat = 1.0, wave_sp = 1.0;
 
-        Acoustic2d test(len, nodes,
+        Acoustic2d test(REFL, len, nodes,
                         time_lim, time_step,
                         dens, el_rat, wave_sp);
         test.Solver();

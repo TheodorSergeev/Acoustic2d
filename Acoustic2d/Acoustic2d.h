@@ -12,7 +12,7 @@ using std::string;
 using std::cout;
 using std::to_string;
 
-enum BoundCondType { NONE, DIRICHLET, NEUMANN, MUR, PML };
+enum BoundCondType { REFL, MUR, PML };
 
 template <class TYPE>
 struct Coord
@@ -47,6 +47,8 @@ class Acoustic2d
 
 protected:
 
+    BoundCondType bound_cond; // bounary condition type
+
     double den;     // density
     double el_rat;  // volume elastic ratio
     double wave_sp; // wave speed
@@ -54,12 +56,12 @@ protected:
     vector < vector<AcVars> > next_sol_arr; // t+1
     vector < vector<AcVars> > curr_sol_arr; // t
 
-    vector < vector<AcVars> >& next_sol;    // references to arrays above
-    vector < vector<AcVars> >& curr_sol;    // to avoid copying when swapping
+    vector < vector<AcVars> >& next_sol;    // references to the arrays above
+    vector < vector<AcVars> >& curr_sol;    // to avoid copying when swapping (time step)
 
     Coord <unsigned int> grid_size;  // grid size
-    Coord <double>       length;     // x and y dimensiions of the rectangular field
-    Coord <double>       step;       // x and y spatial grid sizes
+    Coord <double>       length;     // x and y dimensions of the rectangular field
+    Coord <double>       step;       // x and y spatial grid step sizes
 
     double time_lim;
     double t_step;
@@ -72,7 +74,6 @@ protected:
     void Dump();                  // print techical info
 
     void Iteration(int t_step_num);
-    void PmlIteration(int t_step_num); //tmp
 
     void ReflBoundCond();
     void MurBoundCond();
@@ -85,7 +86,7 @@ public:
 
     Acoustic2d();
 
-    Acoustic2d(double len, int nodes,
+    Acoustic2d(BoundCondType bound_cond_, double len, int nodes,
                double time_lim, double time_step,
                double density, double elastic_ratio, double wave_speed);
 
