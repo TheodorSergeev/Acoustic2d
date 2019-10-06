@@ -11,11 +11,13 @@ int main()
         const double len = 1.0;
         const int nodes = 51;
         const double time_lim = 1.0, time_step = 0.01;
-        const double dens = 1.0, el_rat = 1.0, wave_sp = 1.0;
+        const double dens = 1.0, el_rat = 1.0;
+        const double wave_sp = 2.0;
 
-        Acoustic2d test(REFL, len, nodes,
+        Acoustic2d test(TVD, REFL, len, nodes,
                         time_lim, time_step,
-                        dens, el_rat, wave_sp);
+                        dens, el_rat, 
+                        wave_sp);
         test.Solver();
 
     }

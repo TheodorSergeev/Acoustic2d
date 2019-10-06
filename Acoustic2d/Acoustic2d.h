@@ -12,7 +12,8 @@ using std::string;
 using std::cout;
 using std::to_string;
 
-enum BoundCondType { REFL, MUR, PML };
+enum BoundCondType { NONE, REFL, MUR, PML };
+enum SchemeType    { FD, TVD };
 
 template <class TYPE>
 struct Coord
@@ -26,12 +27,18 @@ struct Coord
 
 };
 
+/*struct StressTensor
+{
+
+    double xx, xy, yy;
+
+};*/
+
 struct AcVars  //acoustic variables
 {
 
-
-    AcVars(double p_, double u_, double v_, double Q_ = 0.0, double R_ = 0.0):
-        p(p_), u(u_), v(v_), Q(Q_), R(R_)
+    AcVars(double u_, double v_, double p_, double Q_ = 0.0, double R_ = 0.0):
+        u(u_), v(v_), p(p_), Q(Q_), R(R_)
     {}
 
     double p, // sound pressure
@@ -42,12 +49,58 @@ struct AcVars  //acoustic variables
 
 };
 
+
+#define p_wave_sp wave_sp
+#define s_wave_sp wave_sp
+
+enum RiemanInvType {X, Y};
+
+struct RiemanInv
+{
+
+    double w1, w2, w3;
+
+    RiemanInv(const RiemanInv& cpy):
+        w1(cpy.w1), w2(cpy.w2), w3(cpy.w3)
+    {}
+
+    RiemanInv(const AcVars& sol, RiemanInvType type, double den, double wave_sp)
+    {
+
+
+        if(type == X)
+        {
+
+            w1 = sol.v;
+            w2 = + sol.u * den * wave_sp / 2 + sol.p / 2;
+            w3 = - sol.u * den * wave_sp / 2 + sol.p / 2;
+
+        }
+        else if(type == Y)
+        {
+
+            w1 = sol.u;
+            w2 = + sol.v * den * wave_sp / 2 + sol.p / 2;
+            w3 = - sol.v * den * wave_sp / 2 + sol.p / 2;
+
+        }
+
+    }
+
+    RiemanInv(double w1_, double w2_, double w3_):
+        w1(w1_), w2(w2_), w3(w3_)
+    {}
+
+};
+
+
 class Acoustic2d
 {
 
 protected:
 
     BoundCondType bound_cond; // bounary condition type
+    SchemeType scheme_type;
 
     double den;     // density
     double el_rat;  // volume elastic ratio
@@ -74,6 +127,10 @@ protected:
     void Dump();                  // print techical info
 
     void Iteration(int t_step_num);
+    void FD_Iteration(int t_step_num);
+    void TVD_Iteration(int t_step_num);
+    void TVD_Step_x(int t_step_num);
+    void TVD_Step_y(int t_step_num);
 
     void ReflBoundCond();
     void MurBoundCond();
@@ -86,16 +143,17 @@ public:
 
     Acoustic2d();
 
-    Acoustic2d(BoundCondType bound_cond_, double len, int nodes,
+    Acoustic2d(SchemeType scheme_type_, BoundCondType bound_cond_, 
+               double len, int nodes,
                double time_lim, double time_step,
-               double density, double elastic_ratio, double wave_speed);
+               double density, double elastic_ratio, 
+               double wave_speed);
 
     void RecordCurrSol(string& prefix, double t);
 
     void Solver();
 
     virtual void user_action(double t);
-
 };
 
 #endif
