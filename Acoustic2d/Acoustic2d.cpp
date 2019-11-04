@@ -74,12 +74,12 @@ void Acoustic2d::Dump()
 }
 
 
-Acoustic2d::Acoustic2d(SchemeType scheme_type_, BoundCondType bound_cond_, 
+Acoustic2d::Acoustic2d(SchemeType scheme_type_, BoundCondType bound_cond_,
                        double len, int nodes,
                        double time_lim, double time_step,
-                       double density, double elastic_ratio, 
+                       double density, double elastic_ratio,
                        double w_sp):
-    scheme_type(scheme_type_), bound_cond(bound_cond_), 
+    scheme_type(scheme_type_), bound_cond(bound_cond_),
     length(len, len), step(0, 0),  grid_size(nodes, nodes),
     time_lim(time_lim), t_step(time_step),
     next_sol_arr(), curr_sol_arr(),
@@ -136,12 +136,15 @@ void Acoustic2d::RecordCurrSol(string& prefix, double t)
         throw "Bad output filename " + fname + " in RecordCurrSol (check if the directory exists).\n";
     output << "x coord, y coord, z coord, scalar\n";
 
-    for(unsigned int i = 0; i < grid_size.x - 1; ++i)
+    for(unsigned int i = 0; i < grid_size.x/* - 1*/; ++i)
     {
 
-        for(unsigned int j = 0; j < grid_size.y - 1; ++j)
+        for(unsigned int j = 0; j < grid_size.y/* - 1*/; ++j)
 
-        output << (i + 0.5) * step.x << ", " << (j + 0.5) * step.y << ", 0.0, " << curr_sol[i][j].p << "\n";
+        output << (i + 0/*.5*/) * step.x << ", "
+               << (j + 0/*.5*/) * step.y << ", "
+               << "0.0"                  << ", "
+               << curr_sol[i][j].p << "\n";
 
     }
 
@@ -355,7 +358,7 @@ void Acoustic2d::FD_Iteration(int t_step_num)
         for(unsigned int j = 0; j < grid_size.y - 1; ++j)
         {
 
-            
+
             next_sol[i][j].p = curr_sol[i][j].p - el_rat * t_step * ((curr_sol[i + 1][j].u - curr_sol[i][j].u) / step.x +
                                                                     (curr_sol[i][j + 1].v - curr_sol[i][j].v) / step.y);
 
@@ -397,13 +400,13 @@ void Acoustic2d::Iteration(int t_step_num)
     switch(bound_cond)
     {
 
-        case REFL: 
-            ReflBoundCond(); 
+        case REFL:
+            ReflBoundCond();
             break;
-        case MUR:  
+        case MUR:
             MurBoundCond();
             break;
-        case PML:  
+        case PML:
             PmlBoundCond();
             break;
         case NONE:
@@ -423,26 +426,28 @@ void Acoustic2d::TVD_Iteration(int t_step_num)
     /*
      * We solve regular hyperbolic system of PDE (http://en.wikipedia.org/wiki/Hyperbolic_partial_differential_equation) in form:
      * du/dt + Ax * du/dx + Ay * du/dy = 0.
-     * 
+     *
      * During time integration we use dimension split method:
      * 1. Step:
      * Integrate system dv/dt + Ax * dv/dx = 0, get u = v^(n + 1).
      * 2. Step:
      * Integrate system du/dt + Ay * du/dy = 0, get on next time step u^(n + 1).
      */
-    
+
     // curr = t
     // next = -
     TVD_Step_x(t_step_num);
     // curr = t
     // next = t+1/2
+    ReflBoundCond();
     swap(curr_sol, next_sol);
     // curr = t+1/2
     // next = t
     TVD_Step_y(t_step_num);
+    ReflBoundCond();
     // curr = t+1/2
     // next = t+1
-    
+
 }
 
 
@@ -478,8 +483,8 @@ void Acoustic2d::TVD_Step_x(int t_step_num)
 {
 
     const double cour_num_x = (0.5 * t_step) * wave_sp / step.x;
-    
-    for(int j = 0; j < grid_size.y - 1; ++j)
+
+    for(int j = 0; j < grid_size.y/* - 1*/; ++j)
     {
 
         RiemanInv nnu(curr_sol[2][j], X, den, wave_sp); // w2
@@ -487,15 +492,15 @@ void Acoustic2d::TVD_Step_x(int t_step_num)
         RiemanInv u  (curr_sol[0][j], X, den, wave_sp); // w
         RiemanInv pu (u); // w_1 = w - valid for the linear case
         RiemanInv ppu(u); // w_2 = w - valid for the linear case
-        
-        for(int i = 0; i < grid_size.x - 1; ++i)
+
+        for(int i = 0; i < grid_size.x/* - 1*/; ++i)
         {
 
             RiemanInv d(tvd2(0.0, ppu.w1, pu.w1, u.w1, nu.w1),
                         tvd2(cour_num_x, nnu.w2, nu.w2, u.w2, pu.w2),
                         tvd2(cour_num_x, ppu.w3, pu.w3, u.w3, nu.w3));
 
-            next_sol[i][j].u = (d.w2 - d.w3) / den / wave_sp;            
+            next_sol[i][j].u = (d.w2 - d.w3) / den / wave_sp;
             next_sol[i][j].v = d.w1;
             next_sol[i][j].p = d.w2 + d.w3;
 
@@ -504,38 +509,40 @@ void Acoustic2d::TVD_Step_x(int t_step_num)
             u   = nu;
             nu  = nnu;
 
-            if(i < grid_size.x - 3 - 1) 
+            if(i < grid_size.x - 3)
                 nnu = RiemanInv(curr_sol[i + 3][j], X, den, wave_sp);
-        
+            else
+                nnu = RiemanInv(curr_sol[grid_size.x - 1][j], X, den, wave_sp);
+
         }
 
     }
-    
+
 }
 
 void Acoustic2d::TVD_Step_y(int t_step_num)
 {
 
     const double cour_num_y = (0.5 * t_step) * wave_sp / step.y;
-    
-    for(int i = 0; i < grid_size.x - 1; ++i)
+
+    for(int i = 0; i < grid_size.x/* - 1*/; ++i)
     {
 
-        RiemanInv u  (curr_sol[i][0], Y, den, wave_sp);
-        RiemanInv nu (curr_sol[i][1], Y, den, wave_sp);
         RiemanInv nnu(curr_sol[i][2], Y, den, wave_sp);
-        RiemanInv ppu(u); // Valid for the linear case
+        RiemanInv nu (curr_sol[i][1], Y, den, wave_sp);
+        RiemanInv u  (curr_sol[i][0], Y, den, wave_sp);
         RiemanInv pu (u); // Valid for the linear case
-        
-        for(int j = 0; j < grid_size.y - 1; ++j)
+        RiemanInv ppu(u); // Valid for the linear case
+
+        for(int j = 0; j < grid_size.y/* - 1*/; ++j)
         {
-        
+
             RiemanInv d(tvd2(0.0, ppu.w1, pu.w1, u.w1, nu.w1),
                         tvd2(cour_num_y, nnu.w2, nu.w2, u.w2, pu.w2),
                         tvd2(cour_num_y, ppu.w3, pu.w3, u.w3, nu.w3));
 
             //inc_y(curr_sol_arr[i][j], d, den, p_wave_sp, s_wave_sp);
-            next_sol[i][j].u = d.w1;            
+            next_sol[i][j].u = d.w1;
             next_sol[i][j].v = (d.w2 - d.w3) / den / wave_sp;
             next_sol[i][j].p = d.w2 + d.w3;
 
@@ -544,9 +551,11 @@ void Acoustic2d::TVD_Step_y(int t_step_num)
             u   = nu;
             nu  = nnu;
 
-            if(j < grid_size.y - 3 - 1) 
+            if(j < grid_size.y - 3)
                 nnu = RiemanInv(curr_sol[i][j + 3], Y, den, wave_sp);
-        
+            else
+                nnu = RiemanInv(curr_sol[i][grid_size.y - 1], Y, den, wave_sp);
+
         }
 
     }

@@ -16,7 +16,7 @@ int main()
 
         Acoustic2d test(TVD, REFL, len, nodes,
                         time_lim, time_step,
-                        dens, el_rat, 
+                        dens, el_rat,
                         wave_sp);
         test.Solver();
 
