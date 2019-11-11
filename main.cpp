@@ -10,14 +10,18 @@ int main()
 
         const double len = 1.0;
         const int nodes = 51;
-        const double time_lim = 1.0, time_step = 0.01;
+        const double time_lim = 1.0, time_step = 0.005;
         const double dens = 1.0, el_rat = 1.0;
         const double wave_sp = 2.0;
 
-        Acoustic2d test(TVD, REFL, len, nodes,
+        const Coord <int> pml_depth(10, 10);
+        const Coord <double> pml_coef(100.0, 100.0);
+
+        Acoustic2d test(FD, PML, len, nodes,
                         time_lim, time_step,
                         dens, el_rat,
-                        wave_sp);
+                        wave_sp,
+                        pml_depth, pml_coef);
         test.Solver();
 
     }

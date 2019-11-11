@@ -78,13 +78,17 @@ Acoustic2d::Acoustic2d(SchemeType scheme_type_, BoundCondType bound_cond_,
                        double len, int nodes,
                        double time_lim, double time_step,
                        double density, double elastic_ratio,
-                       double w_sp):
+                       double w_sp,
+                       const Coord <int>& pml_depth_,
+                       const Coord <double>& pml_coef_
+                       ):
     scheme_type(scheme_type_), bound_cond(bound_cond_),
-    length(len, len), step(0, 0),  grid_size(nodes, nodes),
+    length(len, len), step(0.0, 0.0),  grid_size(nodes, nodes),
     time_lim(time_lim), t_step(time_step),
     next_sol_arr(), curr_sol_arr(),
     next_sol(next_sol_arr), curr_sol(curr_sol_arr),
-    den(density), el_rat(elastic_ratio), wave_sp(w_sp)
+    den(density), el_rat(elastic_ratio), wave_sp(w_sp),
+    pml_depth(pml_depth_), pml_coef(pml_coef_)
 {
 
     if(nodes < 2)
@@ -112,10 +116,11 @@ Acoustic2d::Acoustic2d(SchemeType scheme_type_, BoundCondType bound_cond_,
 }
 
 Acoustic2d::Acoustic2d():
-    length(0.0, 0.0), time_lim(0), t_step(0), step(0.0, 0.0), courant_num(0), grid_size(0, 0),
+    length(0.0, 0.0), time_lim(0.0), t_step(0.0),
+    step(0.0, 0.0), courant_num(0.0), grid_size(0, 0),
     next_sol_arr(), curr_sol_arr(),
     next_sol(next_sol_arr), curr_sol(curr_sol_arr),
-    den(0.0), el_rat(0.0)
+    den(0.0), el_rat(0.0), pml_depth(0, 0), pml_coef(0.0, 0.0)
 {
 
     Dump();
@@ -123,7 +128,7 @@ Acoustic2d::Acoustic2d():
 }
 
 
-void Acoustic2d::RecordCurrSol(string& prefix, double t)
+void Acoustic2d::record_curr_sol(string& prefix, double t)
 {
 
     std::ofstream output;
@@ -136,15 +141,50 @@ void Acoustic2d::RecordCurrSol(string& prefix, double t)
         throw "Bad output filename " + fname + " in RecordCurrSol (check if the directory exists).\n";
     output << "x coord, y coord, z coord, scalar\n";
 
-    for(unsigned int i = 0; i < grid_size.x/* - 1*/; ++i)
+    for(unsigned int i = 0; i < grid_size.x; ++i)
     {
 
-        for(unsigned int j = 0; j < grid_size.y/* - 1*/; ++j)
+        for(unsigned int j = 0; j < grid_size.y; ++j)
+        {
 
-        output << (i + 0/*.5*/) * step.x << ", "
-               << (j + 0/*.5*/) * step.y << ", "
-               << "0.0"                  << ", "
-               << curr_sol[i][j].p << "\n";
+            output << i * step.x << ", "
+                   << j * step.y << ", "
+                   << "0.0"                  << ", "
+                   << curr_sol[i][j].p << "\n";
+        }
+
+    }
+
+    output.close();
+
+}
+
+
+void Acoustic2d::record_curr_sol_shifted_mesh(string& prefix, double t)
+{
+
+    std::ofstream output;
+    //string fname = "data/" + prefix + "_" + to_string(t) + ".txt";
+
+    string fname = "data/test.csv." + to_string(int(t / t_step));
+    output.open(fname, std::ifstream::out);
+
+    if(!output.is_open() || !output.good())
+        throw "Bad output filename " + fname + " in RecordCurrSol (check if the directory exists).\n";
+    output << "x coord, y coord, z coord, scalar\n";
+
+    for(unsigned int i = 0; i < grid_size.x - 1; ++i)
+    {
+
+        for(unsigned int j = 0; j < grid_size.y - 1; ++j)
+        {
+
+            output << (i + 0.5) * step.x << ", "
+                   << (j + 0.5) * step.y << ", "
+                   << "0.0"              << ", "
+                   << curr_sol[i][j].p << "\n";
+
+        }
 
     }
 
@@ -156,17 +196,41 @@ void Acoustic2d::user_action(double t)
 {
 
     string pref = "";
-    RecordCurrSol(pref, t);
+
+    switch(scheme_type)
+    {
+
+        case TVD:
+            record_curr_sol(pref, t);
+            break;
+
+        case FD:
+            record_curr_sol_shifted_mesh(pref, t);
+            break;
+
+    }
 
 }
-
-#define X0 length.x * 0.5 + 0.5 * step.x
 
 AcVars Acoustic2d::InitCond(Coord<double>& r)
 {
 
     CheckCoord(r);
     AcVars val(0.0, 0.0, 0.0); // cos(pow(r.x * r.x + r.y * r.y, 0.5))
+    double X0 = 0.0;
+
+    switch(scheme_type)
+    {
+
+        case TVD:
+            X0 = length.x * 0.5 /*+ 0.5 * step.x*/;
+            break;
+
+        case FD:
+            X0 = length.x * 0.5 - 0.5 * step.x;
+            break;
+
+    }
 
     double rad = pow((r.x - X0) * (r.x - X0) + (r.y - X0) * (r.y - X0), 0.5);
 
@@ -283,6 +347,8 @@ double Acoustic2d::R(int node_pos, int pml_depth, double R_max, double power) //
 void Acoustic2d::PmlBoundCond()
 {
 
+    // todo : improve code quality here
+
     const Coord <int> pml_depth(10, 10);
     const Coord <double> pml_coef(100.0, 100.0); //den / t_step * 0.8;
     double c = pow(el_rat / den, 0.5);
@@ -384,6 +450,16 @@ void Acoustic2d::FD_Iteration(int t_step_num)
 void Acoustic2d::Iteration(int t_step_num)
 {
 
+    if(scheme_type == TVD && bound_cond == PML)
+    {
+
+        TvdPmlBoundCond(t_step_num);
+        ReflBoundCond();
+        swap(curr_sol, next_sol);
+        return;
+
+    }
+
     switch(scheme_type)
     {
 
@@ -392,7 +468,8 @@ void Acoustic2d::Iteration(int t_step_num)
             break;
 
         case FD:
-            FD_Iteration(t_step_num);
+            if(bound_cond != PML)
+                FD_Iteration(t_step_num);
             break;
 
     }
@@ -417,39 +494,6 @@ void Acoustic2d::Iteration(int t_step_num)
     swap(curr_sol, next_sol);
 
 }
-
-
-
-void Acoustic2d::TVD_Iteration(int t_step_num)
-{
-
-    /*
-     * We solve regular hyperbolic system of PDE (http://en.wikipedia.org/wiki/Hyperbolic_partial_differential_equation) in form:
-     * du/dt + Ax * du/dx + Ay * du/dy = 0.
-     *
-     * During time integration we use dimension split method:
-     * 1. Step:
-     * Integrate system dv/dt + Ax * dv/dx = 0, get u = v^(n + 1).
-     * 2. Step:
-     * Integrate system du/dt + Ay * du/dy = 0, get on next time step u^(n + 1).
-     */
-
-    // curr = t
-    // next = -
-    TVD_Step_x(t_step_num);
-    // curr = t
-    // next = t+1/2
-    ReflBoundCond();
-    swap(curr_sol, next_sol);
-    // curr = t+1/2
-    // next = t
-    TVD_Step_y(t_step_num);
-    ReflBoundCond();
-    // curr = t+1/2
-    // next = t+1
-
-}
-
 
 #define real double
 inline real le_min(real a, real b) { return a > b ? b : a; }
@@ -477,6 +521,190 @@ inline real tvd2(const double c, const double u_2, const double u_1, const doubl
     return u - c * (f12 - f_12);
 
 }
+
+double Acoustic2d::sigma_x(int node)
+{
+
+    double j = (double) node;
+
+    return R(std::min(j, (double) grid_size.x - j),
+             pml_depth.x, pml_coef.x, 2.0);
+
+}
+
+double Acoustic2d::sigma_y(int node)
+{
+
+
+
+}
+
+void Acoustic2d::TvdPmlBoundCond(int t_step_num)
+{
+
+    // todo : improve code quality here
+
+    // Step X
+
+    const double cour_num_x = (t_step / 3.0) * wave_sp / step.x;
+
+    for(int j = 0; j < grid_size.y; ++j)
+    {
+
+        double sig_y = sigma_y(j);
+
+        RiemanInv nnu(curr_sol[2][j], PML_X, den, wave_sp, sig_y); // w2
+        RiemanInv nu (curr_sol[1][j], PML_X, den, wave_sp, sig_y); // w1
+        RiemanInv u  (curr_sol[0][j], PML_X, den, wave_sp, sig_y); // w
+        RiemanInv pu (u);                                   // w_1 = w
+        RiemanInv ppu(u);                                   // w_2 = w
+
+        for(int i = 0; i < grid_size.x; ++i)
+        {
+
+            RiemanInv d(tvd2(0.0, ppu.w1, pu.w1, u.w1, nu.w1),
+                        tvd2(0.0, nnu.w2, nu.w2, u.w2, pu.w2),
+                        tvd2(0.0, ppu.w3, pu.w3, u.w3, nu.w3),
+                        tvd2(cour_num_x, ppu.w4, pu.w4, u.w4, nu.w4),
+                        tvd2(cour_num_x, ppu.w5, pu.w5, u.w5, nu.w5));
+
+            next_sol[i][j].u = d.w3;
+            next_sol[i][j].v = - sig_y * d.w2 + (d.w4 - d.w5) / den / wave_sp;
+            next_sol[i][j].p = d.w4 + d.w5;
+            next_sol[i][j].Q = d.w2;
+            next_sol[i][j].R = d.w1;
+
+            ppu = pu;
+            pu  = u;
+            u   = nu;
+            nu  = nnu;
+
+            if(i < grid_size.x - 3)
+                nnu = RiemanInv(curr_sol[i + 3][j], PML_X, den, wave_sp, sig_y);
+            else
+                nnu = RiemanInv(curr_sol[grid_size.x - 1][j], PML_X, den, wave_sp, sig_y);
+
+        }
+
+    }
+
+    swap(curr_sol, next_sol);
+
+    // Step Y
+
+    const double cour_num_y = (t_step / 3.0) * wave_sp / step.y;
+
+    for(int i = 0; i < grid_size.x; ++i)
+    {
+
+        double sig_x = sigma_x(i);
+
+        RiemanInv nnu(curr_sol[i][2], PML_Y, den, wave_sp, sig_x);
+        RiemanInv nu (curr_sol[i][1], PML_Y, den, wave_sp, sig_x);
+        RiemanInv u  (curr_sol[i][0], PML_Y, den, wave_sp, sig_x);
+        RiemanInv pu (u);
+        RiemanInv ppu(u);
+
+        for(int j = 0; j < grid_size.y; ++j)
+        {
+
+            RiemanInv d(tvd2(0.0, ppu.w1, pu.w1, u.w1, nu.w1),
+                        tvd2(0.0, nnu.w2, nu.w2, u.w2, pu.w2),
+                        tvd2(0.0, ppu.w3, pu.w3, u.w3, nu.w3),
+                        tvd2(cour_num_y, ppu.w4, pu.w4, u.w4, nu.w4),
+                        tvd2(cour_num_y, ppu.w5, pu.w5, u.w5, nu.w5));
+
+            next_sol[i][j].u = - sig_x * d.w1 + (d.w4 - d.w5) / den / wave_sp;
+            next_sol[i][j].v = d.w3;
+            next_sol[i][j].p = d.w4 + d.w5;
+            next_sol[i][j].Q = d.w2;
+            next_sol[i][j].R = d.w1;
+
+            ppu = pu;
+            pu  = u;
+            u   = nu;
+            nu  = nnu;
+
+            if(j < grid_size.y - 3)
+                nnu = RiemanInv(curr_sol[i][j + 3], PML_Y, den, wave_sp, sig_x);
+            else
+                nnu = RiemanInv(curr_sol[i][grid_size.y - 1], PML_Y, den, wave_sp, sig_x);
+
+        }
+
+    }
+
+    swap(curr_sol, next_sol);
+
+    // Step analytical
+
+    for(int i = 0; i < grid_size.x; ++i)
+    {
+
+        double sig_x = sigma_x(i);
+
+        for(int j = 0; j < grid_size.y; ++j)
+        {
+
+            double sig_y = sigma_y(j);
+
+            sig_x += 1e-12;
+            sig_y += 1e-12;
+
+            RiemanInv w(curr_sol[i][j].u / sig_x + curr_sol[i][j].R,
+                        curr_sol[i][j].v / sig_y + curr_sol[i][j].Q,
+                        - curr_sol[i][j].u / sig_x,
+                        - curr_sol[i][j].v / sig_y,
+                        curr_sol[i][j].p);
+
+            double t = t_step / 3.0;
+
+            RiemanInv d(w.w1,
+                        w.w2,
+                        w.w3 * exp(- wave_sp * sig_x * t),
+                        w.w4 * exp(- wave_sp * sig_y * t),
+                        w.w5 * exp(- wave_sp * (sig_x + sig_y) * t));
+
+            next_sol[i][j].u = - sig_x * d.w3;
+            next_sol[i][j].v = - sig_y * d.w4;
+            next_sol[i][j].p = d.w5;
+            next_sol[i][j].Q = d.w2 + d.w4;
+            next_sol[i][j].R = d.w1 + d.w3;
+
+        }
+
+    }
+
+}
+
+void Acoustic2d::TVD_Iteration(int t_step_num)
+{
+
+    /*
+     * We solve regular hyperbolic system of PDE (http://en.wikipedia.org/wiki/Hyperbolic_partial_differential_equation) in form:
+     * du/dt + Ax * du/dx + Ay * du/dy = 0.
+     *
+     * During time integration we use dimension split method:
+     * 1. Step:
+     * Integrate system dv/dt + Ax * dv/dx = 0, get u = v^(n + 1).
+     * 2. Step:
+     * Integrate system du/dt + Ay * du/dy = 0, get on next time step u^(n + 1).
+     */
+
+    // curr = t
+    // next = -
+    TVD_Step_x(t_step_num);
+    // curr = t
+    // next = t+1/2
+    swap(curr_sol, next_sol);
+    // curr = t+1/2
+    // next = t
+    TVD_Step_y(t_step_num);
+    // curr = t+1/2
+    // next = t+1
+
+}
+
 
 
 void Acoustic2d::TVD_Step_x(int t_step_num)
