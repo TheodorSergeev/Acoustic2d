@@ -15,6 +15,9 @@ using std::to_string;
 enum BoundCondType { NONE, REFL, MUR, PML };
 enum SchemeType    { FD, TVD };
 
+const string SCHEME_TYPE_NAMES[4] = {"FD", "TVD"};
+const string BOUND_COND_NAMES[4] = {"NONE", "REFL", "MUR", "PML"};
+
 template <class TYPE>
 struct Coord
 {
@@ -175,7 +178,7 @@ protected:
 
     void record_curr_sol             (string& prefix, double t);
     void record_curr_sol_shifted_mesh(string& prefix, double t);
-
+    void record_energy               (string& predix, double t);
 public:
 
     virtual AcVars InitCond (Coord<double>& r);
