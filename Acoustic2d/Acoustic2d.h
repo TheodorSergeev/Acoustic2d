@@ -16,7 +16,7 @@ enum BoundCondType { NONE, REFL, MUR, PML };
 enum SchemeType    { FD, TVD };
 
 const string SCHEME_TYPE_NAMES[4] = {"FD", "TVD"};
-const string BOUND_COND_NAMES[4] = {"NONE", "REFL", "MUR", "PML"};
+const string BOUND_COND_NAMES [4] = {"NONE", "REFL", "MUR", "PML"};
 
 template <class TYPE>
 struct Coord
@@ -33,13 +33,6 @@ struct Coord
     {}
 
 };
-
-/*struct StressTensor
-{
-
-    double xx, xy, yy;
-
-};*/
 
 struct AcVars  //acoustic variables
 {
@@ -66,7 +59,6 @@ struct RiemanInv
 {
 
     double w1, w2, w3, w4, w5;
-
 
     RiemanInv(const RiemanInv& cpy):
         w1(cpy.w1), w2(cpy.w2), w3(cpy.w3), w4(cpy.w4), w5(cpy.w5)
@@ -118,9 +110,7 @@ struct RiemanInv
 
     RiemanInv(double w1_, double w2_, double w3_, double w4_ = 0.0, double w5_ = 0.0):
         w1(w1_), w2(w2_), w3(w3_), w4(w4_), w5(w5_)
-    {
-
-    }
+    {}
 
 };
 
@@ -128,8 +118,8 @@ struct RiemanInv
 class Acoustic2d
 {
 
-protected:
-
+//protected:
+public:
     BoundCondType bound_cond; // bounary condition type
     SchemeType scheme_type;
 
@@ -179,6 +169,7 @@ protected:
     void record_curr_sol             (string& prefix, double t);
     void record_curr_sol_shifted_mesh(string& prefix, double t);
     void record_energy               (string& predix, double t);
+
 public:
 
     virtual AcVars InitCond (Coord<double>& r);

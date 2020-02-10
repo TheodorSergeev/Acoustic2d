@@ -48,7 +48,7 @@ def plot_execution_time(filename):
     #ax1.set_xticks(proc_num)
     #ax1.set_xticklabels(msg_size, rotation=40, fontsize=tickssize)
 
-    ax1.set_ylim(-0.000005, 0.000255)
+    #ax1.set_ylim(-0.000005, 0.000255)
     ax1.set_xlabel(r't', fontsize=labelsize)
     ax1.set_ylabel(r'Kinetic energy', fontsize=labelsize)
     ax1.set_title (filename, fontsize=titlesize)
