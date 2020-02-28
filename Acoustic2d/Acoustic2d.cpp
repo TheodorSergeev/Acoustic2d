@@ -145,7 +145,7 @@ void Acoustic2d::record_curr_sol(string& prefix, double t)
 
     if(!output.is_open() || !output.good())
         throw "Bad output filename " + fname + " in RecordCurrSol (check if the directory exists).\n";
-    output << "x coord, y coord, z coord, scalar\n";
+    output << "x coord,y coord,z coord,pressure,u,v,Q,R,R_x,R_y\n";
 
     for(unsigned int i = 0; i < grid_size.x; ++i)
     {
@@ -153,10 +153,16 @@ void Acoustic2d::record_curr_sol(string& prefix, double t)
         for(unsigned int j = 0; j < grid_size.y; ++j)
         {
 
-            output << i * step.x << ", "
-                   << j * step.y << ", "
-                   << "0.0"                  << ", "
-                   << curr_sol[i][j].p << "\n";
+            output << i * step.x         << ", "
+                   << j * step.y         << ", "
+                   << 0.0                << ", "
+                   << curr_sol[i][j].p   << ", "
+                   << curr_sol[i][j].u   << ", "
+                   << curr_sol[i][j].v   << ", "
+                   << curr_sol[i][j].Q   << ", "
+                   << curr_sol[i][j].R   << ", "
+                   << 0.0/*sigma_x(i)*/        << ", "
+                   << 0.0/*sigma_y(j)*/        << "\n";
         }
 
     }
@@ -165,7 +171,7 @@ void Acoustic2d::record_curr_sol(string& prefix, double t)
 
 }
 
-void Acoustic2d::record_energy(string& predix, double t)
+void Acoustic2d::record_energy(string& prefix, double t)
 {
 
     double energy = 0.0;
@@ -176,10 +182,10 @@ void Acoustic2d::record_energy(string& predix, double t)
         for(unsigned int j = pml_depth.y; j < grid_size.y - pml_depth.y; ++j)
         {
 
-            energy += (curr_sol[i][j].u * curr_sol[i][j].u +
-                       curr_sol[i][j].v * curr_sol[i][j].v);
+            /*energy += (curr_sol[i][j].u * curr_sol[i][j].u +
+                       curr_sol[i][j].v * curr_sol[i][j].v);*/
 
-            //energy = energy + curr_sol[i][j].p * 1.5 * (step.x * step.y * 1.0);  // K = 3/2 pV
+            energy = energy + curr_sol[i][j].p * 1.5 * (step.x * step.y * 1.0);  // K = 3/2 pV
 
         }
 
@@ -220,7 +226,7 @@ void Acoustic2d::record_curr_sol_shifted_mesh(string& prefix, double t)
 
     if(!output.is_open() || !output.good())
         throw "Bad output filename " + fname + " in RecordCurrSol (check if the directory exists).\n";
-    output << "x coord, y coord, z coord, scalar\n";
+    output << "x coord,y coord,z coord,pressure,u,v,Q,R,R_x,R_y\n";
 
     for(unsigned int i = 0; i < grid_size.x - 1; ++i)
     {
@@ -230,8 +236,12 @@ void Acoustic2d::record_curr_sol_shifted_mesh(string& prefix, double t)
 
             output << (i + 0.5) * step.x << ", "
                    << (j + 0.5) * step.y << ", "
-                   << "0.0"              << ", "
+                   << 0.0                << ", "
                    << curr_sol[i][j].p   << ", "
+                   << curr_sol[i][j].u   << ", "
+                   << curr_sol[i][j].v   << ", "
+                   << curr_sol[i][j].Q   << ", "
+                   << curr_sol[i][j].R   << ", "
                    << sigma_x(i)         << ", "
                    << sigma_y(j)         << "\n";
 
@@ -285,15 +295,22 @@ AcVars Acoustic2d::InitCond(Coord<double>& r)
 
     }
 
-    const double rad = pow((r.x - X0) * (r.x - X0) + (r.y - X0) * (r.y - X0), 0.5);
-    const double amp = 1.0;
-
     val.p = 0.0;
+    const double rad = pow((r.x - X0) * (r.x - X0) + (r.y - X0) * (r.y - X0), 0.5);
+    double amp = 0.4;
 
-    const double init_rad = step.x * 30;
+    //const double init_rad = step.x * 9;
+    //printf("X0 = %f, rad = %f; init_rad = %f\n", X0, rad, init_rad);
+    //if(rad < init_rad)
+    //    val.p += amp * cos(rad * M_PI / 2 / (init_rad));
 
-    if(rad < init_rad)
-        val.p += amp * cos(rad * M_PI / 2 / (init_rad));
+    // sqrt(2pi) = 2.50662827463
+
+    double var = 0.05;
+    double mu  = 0.0;
+    amp = 0.05;
+
+    val.p = amp / (var * 2.50662827463) * exp(- 0.5 * (rad - mu) * (rad - mu) / var / var);
 
     return val;
 
@@ -406,7 +423,7 @@ double Acoustic2d::R(int node_pos, int pml_depth, double R_max, double power) //
 
 }
 
-double Acoustic2d::sigma_x(int node)
+double Acoustic2d::sigma_x(double node)
 {
 
     double j = (double) node;
@@ -416,8 +433,8 @@ double Acoustic2d::sigma_x(int node)
 
     if(j <= pml_depth.x)
         penetration_depth = pml_depth.x - j;
-    else if(j > x_size - 1.0 - pml_depth.x)
-        penetration_depth = j - (x_size - 1.0 - pml_depth.x);
+    else if(j > x_size - pml_depth.x - 2.0)
+        penetration_depth = j - (x_size - pml_depth.x) + 2.0;
 
     double sigma_val = R(penetration_depth,
                          pml_depth.x, pml_coef.x, 2.0);
@@ -426,7 +443,7 @@ double Acoustic2d::sigma_x(int node)
 
 }
 
-double Acoustic2d::sigma_y(int node)
+double Acoustic2d::sigma_y(double node)
 {
 
     double j = (double) node;
@@ -436,8 +453,8 @@ double Acoustic2d::sigma_y(int node)
 
     if(j <= pml_depth.y)
         penetration_depth = pml_depth.y - j;
-    else if(j > y_size - 1.0 - pml_depth.y)
-        penetration_depth = j - (y_size - 1.0 - pml_depth.y);
+    else if(j > y_size - pml_depth.y - 2.0)
+        penetration_depth = j - (y_size - pml_depth.y) + 1.0;
 
     double sigma_val = R(penetration_depth,
                          pml_depth.y, pml_coef.y, 2.0);
@@ -446,14 +463,17 @@ double Acoustic2d::sigma_y(int node)
 
 }
 
+int ttt = 0;
 
 void Acoustic2d::PmlBoundCond()
 {
-    for (unsigned int i = 1; i < grid_size.x - 1; ++i){
+
+    for (unsigned int i = 1; i < grid_size.x - 1; ++i) {
 
         double Rx = sigma_x(i);
 
-        for (unsigned int j = 1; j < grid_size.y - 1; ++j){
+        for (unsigned int j = 1; j < grid_size.y - 1; ++j)
+        {
 
             double Ry = sigma_y(j);
 
@@ -464,38 +484,48 @@ void Acoustic2d::PmlBoundCond()
         }
     }
 
-    MurBoundCond();
+    //MurBoundCond();
+    ReflBoundCond();
 
-    for (unsigned int i = 0; i < grid_size.x; ++i) {
+    /*if (ttt < 120)
+        printf("t = %d, next_u = %f, curr_p = %f\n", ttt,
+            next_sol[grid_size.x - 2][0].u, curr_sol[grid_size.x - 2][0].p);
+    ttt += 1;*/
 
-        double Rx = sigma_x(i);
+    for(unsigned int i = 0; i < grid_size.x; ++i)
+    {
 
-        for (unsigned int j = 0; j < grid_size.y; ++j) {
+        for(unsigned int j = 0; j < grid_size.y; ++j)
+        {
 
-            double Ry = sigma_y(j);
+            next_sol[i][j].Q = curr_sol[i][j].Q + t_step * wave_sp * curr_sol[i][j].v;
+            next_sol[i][j].R = curr_sol[i][j].R + t_step * wave_sp * curr_sol[i][j].u;
 
-            next_sol[i][j].Q = curr_sol[i][j].Q + t_step * wave_sp * curr_sol[i][j].u;
-            next_sol[i][j].R = curr_sol[i][j].R + t_step * wave_sp * curr_sol[i][j].v;
         }
+
     }
 
-    for (unsigned int i = 0; i < grid_size.x - 1; ++i) {
+    for(unsigned int i = 0; i < grid_size.x - 1; ++i)
+    {
 
-        double Rx = sigma_x(i);
+        double Rx = sigma_x(i + 0.5);
 
-        for (unsigned int j = 0; j < grid_size.y - 1; ++j) {
+        for(unsigned int j = 0; j < grid_size.y - 1; ++j)
+        {
 
-            double Ry = sigma_y(j);
+            double Ry = sigma_y(j + 0.5);
 
             next_sol[i][j].p =  curr_sol[i][j].p -
                                 t_step * (den * wave_sp * wave_sp *
                                 ((next_sol[i + 1][j].u - next_sol[i][j].u) / step.x +
                                  (next_sol[i][j + 1].v - next_sol[i][j].v) / step.y +
-                                 (next_sol[i + 1][j].Q - next_sol[i][j].Q) / step.y * Rx +
-                                 (next_sol[i][j + 1].R - next_sol[i][j].R) / step.x * Ry) +
-                                  wave_sp * (Rx + Ry) * curr_sol[i][j].p);
+                                 (next_sol[i][j + 1].Q - next_sol[i][j].Q) / step.y * Rx +
+                                 (next_sol[i + 1][j].R - next_sol[i][j].R) / step.x * Ry) +
+                                wave_sp * (Rx + Ry) * curr_sol[i][j].p);
         }
+
     }
+
 }
 
 void Acoustic2d::FD_Iteration(int t_step_num)
@@ -519,7 +549,24 @@ void Acoustic2d::FD_Iteration(int t_step_num)
 
     }
 
-    MurBoundCond();
+    //MurBoundCond();
+    //ReflBoundCond();
+    switch(bound_cond)
+    {
+
+        case REFL:
+            ReflBoundCond();
+            break;
+        case MUR:
+            MurBoundCond();
+            break;
+        case PML:
+            throw "PML in FD_Iteration - check code";
+            break;
+        case NONE:
+            break;
+
+    }
 
     for(unsigned int i = 0; i < grid_size.x - 1; ++i)
     {
@@ -531,9 +578,9 @@ void Acoustic2d::FD_Iteration(int t_step_num)
                                 t_step * (den * wave_sp * wave_sp *
                                 ((next_sol[i + 1][j].u - next_sol[i][j].u) / step.x +
                                  (next_sol[i][j + 1].v - next_sol[i][j].v) / step.y +
-                                 (next_sol[i + 1][j].Q - next_sol[i][j].Q) / step.y * Rx +
-                                 (next_sol[i][j + 1].R - next_sol[i][j].R) / step.x * Ry) +
-                                  wave_sp * (Rx + Ry) * curr_sol[i][j].p);
+                                 (next_sol[i][j + 1].Q - next_sol[i][j].Q) / step.y * Rx +
+                                 (next_sol[i + 1][j].R - next_sol[i][j].R) / step.x * Ry) +
+                                wave_sp * (Rx + Ry) * curr_sol[i][j].p);
 
         }
 
@@ -541,49 +588,185 @@ void Acoustic2d::FD_Iteration(int t_step_num)
 
 }
 
+void Acoustic2d::SplidPmlBoundCond()
+{
+
+    double K = den * wave_sp * wave_sp; // elastic_ratio
+
+    for(unsigned int i = 1; i < grid_size.x - 1; ++i)
+    {
+
+        double Rx = sigma_x(i);
+
+        for(unsigned int j = 1; j < grid_size.y - 1; ++j)
+        {
+
+            double Ry = sigma_y(j);
+
+            next_sol[i][j].u = curr_sol[i][j].u * (1.0 - Rx * t_step) -
+                               t_step / den / step.x * (curr_sol[i][j].p - curr_sol[i - 1][j].p);
+            next_sol[i][j].v = curr_sol[i][j].v * (1.0 - Ry * t_step) -
+                               t_step / den / step.y * (curr_sol[i][j].p - curr_sol[i][j - 1].p);
+
+        }
+
+    }
+
+    ReflBoundCond();
+
+    for(unsigned int i = 0; i < grid_size.x - 1; ++i)
+    {
+
+        double Rx = sigma_x(i + 0.5);
+
+        for(unsigned int j = 0; j < grid_size.y - 1; ++j)
+        {
+
+            double Ry = sigma_y(j + 0.5);
+
+            next_sol[i][j].Q =  curr_sol[i][j].Q * (1.0 - Rx * t_step) -
+                                K * t_step / step.x * (next_sol[i + 1][j].u - next_sol[i][j].u);
+            next_sol[i][j].R =  curr_sol[i][j].R * (1.0 - Ry * t_step) -
+                                K * t_step / step.y * (next_sol[i][j + 1].v - next_sol[i][j].v);
+
+            next_sol[i][j].p = next_sol[i][j].Q + next_sol[i][j].R;
+
+            /*next_sol[i][j].p =  curr_sol[i][j].p -
+                                t_step * K *
+                                ((next_sol[i + 1][j].u - next_sol[i][j].u) / step.x +
+                                 (next_sol[i][j + 1].v - next_sol[i][j].v) / step.y);*/
+
+        }
+
+    }
+
+
+    /*for(int i = 1; i < grid_size.x - 1; ++i)
+    {
+
+        double Rx = sigma_x(i);
+
+        for(int j = 1; j < grid_size.y - 1; ++j)
+        {
+
+            double Ry = sigma_y(j);
+
+            next_sol[i][j].u = curr_sol[i][j].u * (1.0 - Rx * t_step) -
+                                - t_step / den / step.x * (curr_sol[i][j].p - curr_sol[i - 1][j].p);
+            // p_2
+            next_sol[i][j].v = curr_sol[i][j].v * (1.0 - Ry * t_step) -
+                                - t_step / den / step.y * (curr_sol[i][j].p - curr_sol[i][j - 1].p);
+
+        }
+
+    }
+
+    ReflBoundCond();
+
+    for(int i = 0; i < grid_size.x - 1; ++i)
+    {
+
+        double Rx = sigma_x(i + 0.5);
+
+        for(int j = 0; j < grid_size.y - 1; ++j)
+        {
+
+            double Ry = sigma_y(j + 0.5);
+            // p_1
+            next_sol[i][j].Q = curr_sol[i][j].Q * (1.0 - Rx * t_step) -
+                                - K * t_step / step.x * (next_sol[i + 1][j].u - next_sol[i][j].u);
+            // p_2
+            next_sol[i][j].R = curr_sol[i][j].R * (1.0 - Ry * t_step) -
+                                - K * t_step / step.y * (next_sol[i][j + 1].v - next_sol[i][j].v);
+
+            next_sol[i][j].p = next_sol[i][j].Q + next_sol[i][j].R;
+
+        }
+
+    }*/
+
+}
+
+
 void Acoustic2d::Iteration(int t_step_num)
 {
 
-    /*if(scheme_type == TVD && bound_cond == PML)
+    if(scheme_type == TVD && bound_cond == PML)
     {
 
         TvdPmlBoundCond(t_step_num);
-        //ReflBoundCond();
         swap(curr_sol, next_sol);
         return;
 
-    }*/
+    }
+
+    if(scheme_type == FD && bound_cond == PML)
+    {
+
+        PmlBoundCond();
+        swap(curr_sol, next_sol);
+        return;
+
+    }
+
+    if(scheme_type == FD && bound_cond == SPLID_PML)
+    {
+
+        if(t_step_num == 1)
+        {
+
+            printf("t_step_num = 1\n");
+
+            for(int i = 0; i < grid_size.x - 1; ++i)
+            {
+
+                for(int j = 0; j < grid_size.y - 1; ++j)
+                {
+
+                    curr_sol[i][j].Q = curr_sol[i][j].p * 0.5;
+                    curr_sol[i][j].R = curr_sol[i][j].p * 0.5;
+
+                }
+
+            }
+
+        }
+
+        SplidPmlBoundCond();
+        swap(curr_sol, next_sol);
+        return;
+
+    }
+
 
     switch(scheme_type)
     {
 
         case TVD:
             TVD_Iteration(t_step_num);
+
+            switch(bound_cond)
+            {
+
+                case REFL:
+                    ReflBoundCond();
+                    break;
+                case MUR:
+                    MurBoundCond();
+                    break;
+                case NONE:
+                    break;
+
+            }
+
             break;
 
         case FD:
-            if(bound_cond != PML)
-                FD_Iteration(t_step_num);
+            FD_Iteration(t_step_num);
             break;
 
     }
 
-    switch(bound_cond)
-    {
-
-        case REFL:
-            ReflBoundCond();
-            break;
-        case MUR:
-            //MurBoundCond();
-            break;
-        case PML:
-            PmlBoundCond();
-            break;
-        case NONE:
-            break;
-
-    }
 
     swap(curr_sol, next_sol);
 
@@ -623,7 +806,7 @@ void Acoustic2d::TvdPmlBoundCond(int t_step_num)
 
     const double cour_num_x = (t_step / 1.0) * wave_sp / step.x;
 
-    for(int j = 0; j < grid_size.y; ++j)
+    for(int j = 1; j < grid_size.y - 1; ++j)
     {
 
         double sig_y = sigma_y(j);
@@ -662,13 +845,14 @@ void Acoustic2d::TvdPmlBoundCond(int t_step_num)
         }
 
     }
+
     swap(curr_sol, next_sol);
 
     // Step Y
 
     const double cour_num_y = (t_step / 1.0) * wave_sp / step.y;
 
-    for(int i = 0; i < grid_size.x; ++i)
+    for(int i = 1; i < grid_size.x - 1; ++i)
     {
 
         double sig_x = sigma_x(i);

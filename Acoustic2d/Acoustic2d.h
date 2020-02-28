@@ -12,11 +12,11 @@ using std::string;
 using std::cout;
 using std::to_string;
 
-enum BoundCondType { NONE, REFL, MUR, PML };
+enum BoundCondType { NONE, REFL, MUR, PML, SPLID_PML };
 enum SchemeType    { FD, TVD };
 
 const string SCHEME_TYPE_NAMES[4] = {"FD", "TVD"};
-const string BOUND_COND_NAMES [4] = {"NONE", "REFL", "MUR", "PML"};
+const string BOUND_COND_NAMES [5] = {"NONE", "REFL", "MUR", "PML", "SPLID_PML"};
 
 template <class TYPE>
 struct Coord
@@ -160,10 +160,11 @@ public:
     void ReflBoundCond();
     void MurBoundCond();
     void PmlBoundCond();
+    void SplidPmlBoundCond();
 
     double R(int node_depth, int pml_depth, double R_max, double power);
-    double sigma_x(int node);
-    double sigma_y(int node);
+    double sigma_x(double node);
+    double sigma_y(double node);
 
 
     void record_curr_sol             (string& prefix, double t);
