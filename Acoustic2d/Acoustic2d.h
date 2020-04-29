@@ -53,7 +53,7 @@ struct AcVars  //acoustic variables
 #define p_wave_sp wave_sp
 #define s_wave_sp wave_sp
 
-enum RiemanInvType {X, Y, PML_X, PML_Y, PML_E};
+enum RiemanInvType {X, Y, PML_X, PML_Y, SPLID_PML_X, SPLID_PML_Y};
 
 struct RiemanInv
 {
@@ -68,6 +68,7 @@ struct RiemanInv
     {
 
         double s = den * wave_sp / 2;
+        double el_rat = den * wave_sp * wave_sp;
 
         if(type == X)
         {
@@ -103,6 +104,32 @@ struct RiemanInv
             w3 = sol.v;
             w4 = + sol.u * s + sol.p / 2.0 + s * pml_coef * sol.R;
             w5 = - sol.u * s + sol.p / 2.0 - s * pml_coef * sol.R;
+
+        }
+        else if(type == SPLID_PML_X)
+        {
+
+            // p1 = sol.Q
+            // p2 = sol.R
+
+            w1 = + sol.R;
+            w2 = sol.v;
+            /*not required in calculations*/ w3 = 0.0;
+            w4 = - sqrt(el_rat * den) * 0.5 * sol.u + 0.5 * (sol.Q + sol.R);
+            w5 = + sqrt(el_rat * den) * 0.5 * sol.u + 0.5 * (sol.Q + sol.R);
+
+        }
+        else if(type == SPLID_PML_Y)
+        {
+
+            // p1 = sol.Q
+            // p2 = sol.R
+
+            w1 = - sol.Q;
+            w2 = sol.u;
+            /*not required in calculations*/ w3 = 0.0;
+            w4 = - sqrt(el_rat * den) * 0.5 * sol.v + 0.5 * (sol.Q + sol.R);
+            w5 = + sqrt(el_rat * den) * 0.5 * sol.v + 0.5 * (sol.Q + sol.R);
 
         }
 
@@ -153,6 +180,7 @@ public:
     void TVD_Step_x(int t_step_num);
     void TVD_Step_y(int t_step_num);
     void TvdPmlBoundCond(int t_step_num);
+    void TvdSplidPmlBoundCond(int t_step_num);
 
     Coord <int> pml_depth;
     Coord <double> pml_coef;
@@ -163,6 +191,8 @@ public:
     void SplidPmlBoundCond();
 
     double R(int node_depth, int pml_depth, double R_max, double power);
+    double sigma_x_shifted_mesh(double node);
+    double sigma_y_shifted_mesh(double node);
     double sigma_x(double node);
     double sigma_y(double node);
 
@@ -180,10 +210,8 @@ public:
     Acoustic2d(SchemeType scheme_type_, BoundCondType bound_cond_,
                double len, int nodes,
                double time_lim, double time_step,
-               double density, double elastic_ratio,
-               double wave_speed,
-               const Coord <int>& pml_depth_,
-               const Coord <double>& pml_coef_
+               double density, double wave_speed,
+               const Coord <int>& pml_depth_, const Coord <double>& pml_coef_
                );
 
     void Solver();

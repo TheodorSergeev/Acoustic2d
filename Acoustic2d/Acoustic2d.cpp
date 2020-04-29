@@ -79,8 +79,7 @@ void Acoustic2d::Dump()
 Acoustic2d::Acoustic2d(SchemeType scheme_type_, BoundCondType bound_cond_,
                        double len, int nodes,
                        double time_lim, double time_step,
-                       double density, double elastic_ratio,
-                       double w_sp,
+                       double density, double w_sp,
                        const Coord <int>& pml_depth_,
                        const Coord <double>& pml_coef_
                        ):
@@ -89,7 +88,7 @@ Acoustic2d::Acoustic2d(SchemeType scheme_type_, BoundCondType bound_cond_,
     time_lim(time_lim), t_step(time_step),
     next_sol_arr(), curr_sol_arr(),
     next_sol(next_sol_arr), curr_sol(curr_sol_arr),
-    den(density), el_rat(elastic_ratio), wave_sp(w_sp),
+    den(density), el_rat(w_sp * w_sp * density), wave_sp(w_sp),
     pml_depth(pml_depth_), pml_coef(pml_coef_)
 {
 
@@ -161,8 +160,8 @@ void Acoustic2d::record_curr_sol(string& prefix, double t)
                    << curr_sol[i][j].v   << ", "
                    << curr_sol[i][j].Q   << ", "
                    << curr_sol[i][j].R   << ", "
-                   << 0.0/*sigma_x(i)*/        << ", "
-                   << 0.0/*sigma_y(j)*/        << "\n";
+                   << sigma_x(i)         << ", "
+                   << sigma_y(j)         << "\n";
         }
 
     }
@@ -242,8 +241,8 @@ void Acoustic2d::record_curr_sol_shifted_mesh(string& prefix, double t)
                    << curr_sol[i][j].v   << ", "
                    << curr_sol[i][j].Q   << ", "
                    << curr_sol[i][j].R   << ", "
-                   << sigma_x(i)         << ", "
-                   << sigma_y(j)         << "\n";
+                   << sigma_x_shifted_mesh(i) << ", "
+                   << sigma_y_shifted_mesh(j) << "\n";
 
         }
 
@@ -423,7 +422,8 @@ double Acoustic2d::R(int node_pos, int pml_depth, double R_max, double power) //
 
 }
 
-double Acoustic2d::sigma_x(double node)
+// for shifted mesh (p_{i+0.5})
+double Acoustic2d::sigma_x_shifted_mesh(double node)
 {
 
     double j = (double) node;
@@ -443,7 +443,8 @@ double Acoustic2d::sigma_x(double node)
 
 }
 
-double Acoustic2d::sigma_y(double node)
+// for shifted mesh (p_{i+0.5})
+double Acoustic2d::sigma_y_shifted_mesh(double node)
 {
 
     double j = (double) node;
@@ -454,7 +455,7 @@ double Acoustic2d::sigma_y(double node)
     if(j <= pml_depth.y)
         penetration_depth = pml_depth.y - j;
     else if(j > y_size - pml_depth.y - 2.0)
-        penetration_depth = j - (y_size - pml_depth.y) + 1.0;
+        penetration_depth = j - (y_size - pml_depth.y) + 2.0;
 
     double sigma_val = R(penetration_depth,
                          pml_depth.y, pml_coef.y, 2.0);
@@ -463,7 +464,20 @@ double Acoustic2d::sigma_y(double node)
 
 }
 
-int ttt = 0;
+double Acoustic2d::sigma_x(double node)
+{
+
+    return sigma_x_shifted_mesh(node - 0.5);
+
+}
+
+double Acoustic2d::sigma_y(double node)
+{
+
+    return sigma_y_shifted_mesh(node - 0.5);
+
+}
+
 
 void Acoustic2d::PmlBoundCond()
 {
@@ -484,13 +498,7 @@ void Acoustic2d::PmlBoundCond()
         }
     }
 
-    //MurBoundCond();
     ReflBoundCond();
-
-    /*if (ttt < 120)
-        printf("t = %d, next_u = %f, curr_p = %f\n", ttt,
-            next_sol[grid_size.x - 2][0].u, curr_sol[grid_size.x - 2][0].p);
-    ttt += 1;*/
 
     for(unsigned int i = 0; i < grid_size.x; ++i)
     {
@@ -508,12 +516,12 @@ void Acoustic2d::PmlBoundCond()
     for(unsigned int i = 0; i < grid_size.x - 1; ++i)
     {
 
-        double Rx = sigma_x(i + 0.5);
+        double Rx = sigma_x_shifted_mesh(i);
 
         for(unsigned int j = 0; j < grid_size.y - 1; ++j)
         {
 
-            double Ry = sigma_y(j + 0.5);
+            double Ry = sigma_y_shifted_mesh(j);
 
             next_sol[i][j].p =  curr_sol[i][j].p -
                                 t_step * (den * wave_sp * wave_sp *
@@ -617,12 +625,12 @@ void Acoustic2d::SplidPmlBoundCond()
     for(unsigned int i = 0; i < grid_size.x - 1; ++i)
     {
 
-        double Rx = sigma_x(i + 0.5);
+        double Rx = sigma_x_shifted_mesh(i);
 
         for(unsigned int j = 0; j < grid_size.y - 1; ++j)
         {
 
-            double Ry = sigma_y(j + 0.5);
+            double Ry = sigma_y_shifted_mesh(j);
 
             next_sol[i][j].Q =  curr_sol[i][j].Q * (1.0 - Rx * t_step) -
                                 K * t_step / step.x * (next_sol[i + 1][j].u - next_sol[i][j].u);
@@ -640,56 +648,38 @@ void Acoustic2d::SplidPmlBoundCond()
 
     }
 
-
-    /*for(int i = 1; i < grid_size.x - 1; ++i)
-    {
-
-        double Rx = sigma_x(i);
-
-        for(int j = 1; j < grid_size.y - 1; ++j)
-        {
-
-            double Ry = sigma_y(j);
-
-            next_sol[i][j].u = curr_sol[i][j].u * (1.0 - Rx * t_step) -
-                                - t_step / den / step.x * (curr_sol[i][j].p - curr_sol[i - 1][j].p);
-            // p_2
-            next_sol[i][j].v = curr_sol[i][j].v * (1.0 - Ry * t_step) -
-                                - t_step / den / step.y * (curr_sol[i][j].p - curr_sol[i][j - 1].p);
-
-        }
-
-    }
-
-    ReflBoundCond();
-
-    for(int i = 0; i < grid_size.x - 1; ++i)
-    {
-
-        double Rx = sigma_x(i + 0.5);
-
-        for(int j = 0; j < grid_size.y - 1; ++j)
-        {
-
-            double Ry = sigma_y(j + 0.5);
-            // p_1
-            next_sol[i][j].Q = curr_sol[i][j].Q * (1.0 - Rx * t_step) -
-                                - K * t_step / step.x * (next_sol[i + 1][j].u - next_sol[i][j].u);
-            // p_2
-            next_sol[i][j].R = curr_sol[i][j].R * (1.0 - Ry * t_step) -
-                                - K * t_step / step.y * (next_sol[i][j + 1].v - next_sol[i][j].v);
-
-            next_sol[i][j].p = next_sol[i][j].Q + next_sol[i][j].R;
-
-        }
-
-    }*/
-
 }
 
 
 void Acoustic2d::Iteration(int t_step_num)
 {
+
+    if(bound_cond == SPLID_PML && t_step_num == 1)
+    {
+
+        for(int i = 0; i < grid_size.x - 1; ++i)
+        {
+
+            for(int j = 0; j < grid_size.y - 1; ++j)
+            {
+
+                curr_sol[i][j].Q = curr_sol[i][j].p * 0.5;
+                curr_sol[i][j].R = curr_sol[i][j].p * 0.5;
+
+            }
+
+        }
+
+    }
+
+    if(scheme_type == TVD && bound_cond == SPLID_PML)
+    {
+
+        TvdSplidPmlBoundCond(t_step_num);
+        swap(curr_sol, next_sol);
+        return;
+
+    }
 
     if(scheme_type == TVD && bound_cond == PML)
     {
@@ -711,26 +701,6 @@ void Acoustic2d::Iteration(int t_step_num)
 
     if(scheme_type == FD && bound_cond == SPLID_PML)
     {
-
-        if(t_step_num == 1)
-        {
-
-            printf("t_step_num = 1\n");
-
-            for(int i = 0; i < grid_size.x - 1; ++i)
-            {
-
-                for(int j = 0; j < grid_size.y - 1; ++j)
-                {
-
-                    curr_sol[i][j].Q = curr_sol[i][j].p * 0.5;
-                    curr_sol[i][j].R = curr_sol[i][j].p * 0.5;
-
-                }
-
-            }
-
-        }
 
         SplidPmlBoundCond();
         swap(curr_sol, next_sol);
@@ -799,6 +769,140 @@ inline real tvd2(const double c, const double u_2, const double u_1, const doubl
 
 }
 
+void Acoustic2d::TvdSplidPmlBoundCond(int t_step_num)
+{
+
+    // Step X
+
+    const double cour_num_x = (t_step / 1.0) * wave_sp / step.x;
+    const double L_coef = sqrt(el_rat / den);
+
+    for(int j = 0; j < grid_size.y; ++j)
+    {
+
+        double sig_y = sigma_y(j);
+
+        RiemanInv nnu(curr_sol[2][j], SPLID_PML_X, den, wave_sp, sig_y); // w2
+        RiemanInv nu (curr_sol[1][j], SPLID_PML_X, den, wave_sp, sig_y); // w1
+        RiemanInv u  (curr_sol[0][j], SPLID_PML_X, den, wave_sp, sig_y); // w
+        RiemanInv pu (u);                                                // w_1 = w
+        RiemanInv ppu(u);                                                // w_2 = w
+
+        for(int i = 0; i < grid_size.x; ++i)
+        {
+
+            RiemanInv d(tvd2(0.0, ppu.w1, pu.w1, u.w1, nu.w1),
+                        tvd2(0.0, ppu.w2, pu.w2, u.w2, nu.w2),
+                        0.0,
+                        tvd2(cour_num_x, nnu.w4, nu.w4, u.w4, pu.w4),
+                        tvd2(cour_num_x, ppu.w5, pu.w5, u.w5, nu.w5));
+
+            next_sol[i][j].u = (- d.w4 + d.w5) / sqrt(el_rat * den);
+            next_sol[i][j].v = + d.w2;
+            next_sol[i][j].Q = - d.w1 + d.w4 + d.w5;
+            next_sol[i][j].R = d.w1;
+            next_sol[i][j].p = next_sol[i][j].Q + next_sol[i][j].R;
+
+            ppu = pu;
+            pu  = u;
+            u   = nu;
+            nu  = nnu;
+
+            if(i < grid_size.x - 3)
+                nnu = RiemanInv(curr_sol[i + 3][j], SPLID_PML_X, den, wave_sp, sig_y);
+            else
+                nnu = RiemanInv(curr_sol[grid_size.x - 1][j], SPLID_PML_X, den, wave_sp, sig_y);
+
+        }
+
+    }
+
+    swap(curr_sol, next_sol);
+
+    // Step Y
+
+    const double cour_num_y = (t_step / 1.0) * wave_sp / step.y;
+
+    for(int i = 0; i < grid_size.x; ++i)
+    {
+
+        double sig_x = sigma_x(i);
+
+        RiemanInv nnu(curr_sol[i][2], SPLID_PML_Y, den, wave_sp, sig_x);
+        RiemanInv nu (curr_sol[i][1], SPLID_PML_Y, den, wave_sp, sig_x);
+        RiemanInv u  (curr_sol[i][0], SPLID_PML_Y, den, wave_sp, sig_x);
+        RiemanInv pu (u);
+        RiemanInv ppu(u);
+
+        for(int j = 0; j < grid_size.y; ++j)
+        {
+
+            RiemanInv d(tvd2(0.0, ppu.w1, pu.w1, u.w1, nu.w1),
+                        tvd2(0.0, ppu.w2, pu.w2, u.w2, nu.w2),
+                        0.0,
+                        tvd2(cour_num_y, nnu.w4, nu.w4, u.w4, pu.w4),
+                        tvd2(cour_num_y, ppu.w5, pu.w5, u.w5, nu.w5));
+
+            next_sol[i][j].u = + d.w2;
+            next_sol[i][j].v = (- d.w4 + d.w5) / sqrt(el_rat * den);
+            next_sol[i][j].Q = - d.w1;
+            next_sol[i][j].R = d.w1 + d.w4 + d.w5;
+            next_sol[i][j].p = next_sol[i][j].Q + next_sol[i][j].R;
+
+            ppu = pu;
+            pu  = u;
+            u   = nu;
+            nu  = nnu;
+
+            if(j < grid_size.y - 3)
+                nnu = RiemanInv(curr_sol[i][j + 3], SPLID_PML_Y, den, wave_sp, sig_x);
+            else
+                nnu = RiemanInv(curr_sol[i][grid_size.y - 1], SPLID_PML_Y, den, wave_sp, sig_x);
+
+        }
+
+    }
+
+    swap(curr_sol, next_sol);
+
+    // Step analytical
+
+    double dt = t_step / 1.0;
+
+    for(int i = 0; i < grid_size.x; ++i)
+    {
+
+        double sig_x = sigma_x(i);
+        double coef1 = exp(- sig_x * dt);
+
+        for(int j = 0; j < grid_size.y; ++j)
+        {
+
+            if(i * j == 0 || i == grid_size.x - 1 || j == grid_size.y - 1)
+            {
+
+                next_sol[i][j].u = 0.0;
+                next_sol[i][j].v = 0.0;
+                continue;
+
+            }
+
+            double sig_y = sigma_y(j);
+            double coef2 = exp(- sig_y * dt);
+
+            next_sol[i][j].u = curr_sol[i][j].u * coef1;
+            next_sol[i][j].v = curr_sol[i][j].v * coef2;
+            next_sol[i][j].Q = curr_sol[i][j].Q * coef1;
+            next_sol[i][j].R = curr_sol[i][j].R * coef2;
+            next_sol[i][j].p = next_sol[i][j].Q + next_sol[i][j].R;
+
+        }
+
+    }
+
+}
+
+
 void Acoustic2d::TvdPmlBoundCond(int t_step_num)
 {
 
@@ -809,7 +913,7 @@ void Acoustic2d::TvdPmlBoundCond(int t_step_num)
     for(int j = 1; j < grid_size.y - 1; ++j)
     {
 
-        double sig_y = sigma_y(j);
+        double sig_y = sigma_y_shifted_mesh(j);
 
         RiemanInv nnu(curr_sol[2][j], PML_X, den, wave_sp, sig_y); // w2
         RiemanInv nu (curr_sol[1][j], PML_X, den, wave_sp, sig_y); // w1
@@ -855,7 +959,7 @@ void Acoustic2d::TvdPmlBoundCond(int t_step_num)
     for(int i = 1; i < grid_size.x - 1; ++i)
     {
 
-        double sig_x = sigma_x(i);
+        double sig_x = sigma_x_shifted_mesh(i);
 
         RiemanInv nnu(curr_sol[i][2], PML_Y, den, wave_sp, sig_x);
         RiemanInv nu (curr_sol[i][1], PML_Y, den, wave_sp, sig_x);
@@ -917,8 +1021,8 @@ void Acoustic2d::TvdPmlBoundCond(int t_step_num)
             else
             {
 
-                double sig_x = sigma_x(i);
-                double sig_y = sigma_y(j);
+                double sig_x = sigma_x_shifted_mesh(i);
+                double sig_y = sigma_y_shifted_mesh(j);
 
                 sig_x += 1e-12;
                 sig_y += 1e-12;
